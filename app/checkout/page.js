@@ -2,15 +2,24 @@
 import { useState, useEffect } from 'react'
 import { useStore } from '@/lib/store'
 import { useRouter } from 'next/navigation'
-import { CreditCard, Lock, ShieldCheck, ArrowRight, Loader2 } from 'lucide-react'
+import { ShieldCheck, ArrowRight, Loader2 } from 'lucide-react'
 import Link from 'next/link'
+
+const initialShippingAddress = {
+  fullName: '',
+  phone: '',
+  addressLine: '',
+  city: '',
+  postalCode: '',
+  country: '',
+}
 
 export default function CheckoutPage() {
   const { cart, user } = useStore()
   const router = useRouter()
   const [loading, setLoading] = useState(false)
-  const [paymentMethod, setPaymentMethod] = useState('stripe') // stripe or cod
   const [error, setError] = useState('')
+  const [shippingAddress, setShippingAddress] = useState(initialShippingAddress)
   const [settings, setSettings] = useState({
     currencySymbol: 'Rs.',
     defaultShippingCharges: 200,
@@ -36,12 +45,11 @@ export default function CheckoutPage() {
   const shipping = subtotal >= settings.freeShippingThreshold ? 0 : settings.defaultShippingCharges
   const taxAmount = settings.taxEnabled ? (subtotal * settings.taxPercentage) / 100 : 0
   const total = subtotal + shipping + taxAmount
-
-  useEffect(() => {
-    if (!user) {
-      router.push('/login?redirect=/checkout')
-    }
-  }, [user, router])
+  const mergedShippingAddress = {
+    ...shippingAddress,
+    fullName: shippingAddress.fullName || user?.name || '',
+    phone: shippingAddress.phone || user?.phoneNumber || '',
+  }
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -58,26 +66,33 @@ export default function CheckoutPage() {
   }, [])
 
   useEffect(() => {
-    if (!settings.stripeEnabled && settings.cashOnDeliveryEnabled) {
-      setPaymentMethod('cod')
-      return
+    if (!user) {
+      router.push('/login?redirect=/checkout')
     }
-    if (!settings.cashOnDeliveryEnabled && settings.stripeEnabled) {
-      setPaymentMethod('stripe')
+  }, [user, router])
+
+  const handleShippingAddressChange = (field, value) => {
+    setShippingAddress((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const validateShippingAddress = () => {
+    const requiredFields = ['fullName', 'phone', 'addressLine', 'city', 'postalCode', 'country']
+    for (const field of requiredFields) {
+      if (!String(mergedShippingAddress[field] || '').trim()) {
+        return 'Please add your delivery address before placing the order.'
+      }
     }
-  }, [settings.cashOnDeliveryEnabled, settings.stripeEnabled])
+    return ''
+  }
 
   const handleCheckout = async () => {
-    if (paymentMethod === 'stripe' && !settings.stripeEnabled) {
-      setError('Stripe payment is currently disabled.')
+    const addressError = validateShippingAddress()
+    if (addressError) {
+      setError(addressError)
       return
     }
-    if (paymentMethod === 'cod' && !settings.cashOnDeliveryEnabled) {
+    if (!settings.cashOnDeliveryEnabled) {
       setError('Cash on Delivery is currently disabled.')
-      return
-    }
-    if (!settings.stripeEnabled && !settings.cashOnDeliveryEnabled) {
-      setError('No payment method is enabled right now.')
       return
     }
 
@@ -87,7 +102,7 @@ export default function CheckoutPage() {
       const res = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items, paymentMethod }),
+        body: JSON.stringify({ items, paymentMethod: 'cod', shippingAddress: mergedShippingAddress }),
       })
       const data = await res.json()
 
@@ -97,19 +112,16 @@ export default function CheckoutPage() {
         return
       }
 
-      if (paymentMethod === 'cod') {
-        router.push(`/checkout/success?method=cod&orderId=${data.orderId}`)
-      } else {
-        // Redirect to Stripe Checkout page
-        window.location.href = data.url
-      }
+      router.push(`/checkout/success?method=cod&orderId=${data.orderId}`)
     } catch (err) {
       setError('Something went wrong. Please try again.')
       setLoading(false)
     }
   }
 
-  if (!user || items.length === 0) {
+  if (!user) return null
+
+  if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
         <p className="text-muted-foreground text-lg">Your cart is empty.</p>
@@ -125,8 +137,58 @@ export default function CheckoutPage() {
       <h1 className="text-3xl font-extrabold mb-8 tracking-tight">Secure Checkout</h1>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-        {/* Order Summary */}
         <div className="space-y-4">
+          <div className="glass p-6 rounded-[2rem] border bg-card space-y-4">
+            <h2 className="text-xl font-bold border-b pb-3">Delivery Address</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <input
+                type="text"
+                placeholder="Full name"
+                value={mergedShippingAddress.fullName}
+                onChange={(e) => handleShippingAddressChange('fullName', e.target.value)}
+                className="p-3 border rounded-xl bg-secondary/50 focus:bg-background outline-none focus:ring-2 focus:ring-primary/50"
+              />
+              <input
+                type="tel"
+                placeholder="Phone number"
+                value={mergedShippingAddress.phone}
+                onChange={(e) => handleShippingAddressChange('phone', e.target.value)}
+                className="p-3 border rounded-xl bg-secondary/50 focus:bg-background outline-none focus:ring-2 focus:ring-primary/50"
+              />
+              <input
+                type="text"
+                placeholder="House / Street / Apartment"
+                value={shippingAddress.addressLine}
+                onChange={(e) => handleShippingAddressChange('addressLine', e.target.value)}
+                className="p-3 border rounded-xl bg-secondary/50 focus:bg-background outline-none focus:ring-2 focus:ring-primary/50 md:col-span-2"
+              />
+              <input
+                type="text"
+                placeholder="City"
+                value={shippingAddress.city}
+                onChange={(e) => handleShippingAddressChange('city', e.target.value)}
+                className="p-3 border rounded-xl bg-secondary/50 focus:bg-background outline-none focus:ring-2 focus:ring-primary/50"
+              />
+              <input
+                type="text"
+                placeholder="Postal code"
+                value={shippingAddress.postalCode}
+                onChange={(e) => handleShippingAddressChange('postalCode', e.target.value)}
+                className="p-3 border rounded-xl bg-secondary/50 focus:bg-background outline-none focus:ring-2 focus:ring-primary/50"
+              />
+              <input
+                type="text"
+                placeholder="Country"
+                value={shippingAddress.country}
+                onChange={(e) => handleShippingAddressChange('country', e.target.value)}
+                className="p-3 border rounded-xl bg-secondary/50 focus:bg-background outline-none focus:ring-2 focus:ring-primary/50 md:col-span-2"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              We&apos;ll use this address for delivery and order records.
+            </p>
+          </div>
+
           <h2 className="text-xl font-bold border-b pb-3">Order Summary</h2>
           <div className="space-y-4">
             {items.map((item, index) => {
@@ -146,7 +208,7 @@ export default function CheckoutPage() {
                     <p className="font-semibold text-sm line-clamp-1">{product.name}</p>
                     <p className="text-xs text-muted-foreground">Qty: {item.quantity}</p>
                   </div>
-              <div className="font-bold text-sm">{settings.currencySymbol} {(price * item.quantity).toFixed(2)}</div>
+                  <div className="font-bold text-sm">{settings.currencySymbol} {(price * item.quantity).toFixed(2)}</div>
                 </div>
               )
             })}
@@ -172,35 +234,13 @@ export default function CheckoutPage() {
           </div>
         </div>
 
-        {/* Payment Panel */}
         <div className="space-y-6">
           <h2 className="text-xl font-bold border-b pb-3">Payment Method</h2>
 
           <div className="flex flex-col gap-3">
-            <button 
-              onClick={() => setPaymentMethod('stripe')}
-              disabled={!settings.stripeEnabled}
-              className={`flex items-center gap-4 p-4 border-2 rounded-2xl transition-all ${paymentMethod === 'stripe' ? 'border-primary bg-primary/5 shadow-md' : 'border-border/50 hover:border-border'}`}
-            >
-              <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${paymentMethod === 'stripe' ? 'border-primary' : 'border-muted-foreground'}`}>
-                {paymentMethod === 'stripe' && <div className="w-3 h-3 bg-primary rounded-full" />}
-              </div>
-              <CreditCard className="w-6 h-6" />
-              <div className="text-left">
-                <p className="font-bold text-sm">Online Payment</p>
-                <p className="text-xs text-muted-foreground">
-                  {settings.stripeEnabled ? 'Stripe, Credit/Debit Cards' : 'Currently unavailable'}
-                </p>
-              </div>
-            </button>
-
-            <button 
-              onClick={() => setPaymentMethod('cod')}
-              disabled={!settings.cashOnDeliveryEnabled}
-              className={`flex items-center gap-4 p-4 border-2 rounded-2xl transition-all ${paymentMethod === 'cod' ? 'border-primary bg-primary/5 shadow-md' : 'border-border/50 hover:border-border'}`}
-            >
-              <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${paymentMethod === 'cod' ? 'border-primary' : 'border-muted-foreground'}`}>
-                {paymentMethod === 'cod' && <div className="w-3 h-3 bg-primary rounded-full" />}
+            <div className="flex items-center gap-4 p-4 border-2 rounded-2xl transition-all border-primary bg-primary/5 shadow-md">
+              <div className="w-6 h-6 rounded-full border-2 flex items-center justify-center border-primary">
+                <div className="w-3 h-3 bg-primary rounded-full" />
               </div>
               <div className="bg-secondary p-1.5 rounded-lg flex items-center justify-center">
                 <ShieldCheck className="w-5 h-5 text-muted-foreground" />
@@ -211,47 +251,30 @@ export default function CheckoutPage() {
                   {settings.cashOnDeliveryEnabled ? 'Pay with cash at your doorstep' : 'Currently unavailable'}
                 </p>
               </div>
-            </button>
+            </div>
           </div>
 
-          {!settings.cashOnDeliveryEnabled && !settings.stripeEnabled && (
+          {!settings.cashOnDeliveryEnabled && (
             <div className="bg-destructive/10 text-destructive p-4 rounded-2xl text-sm font-bold text-center border border-destructive/20">
-              No payment method is currently enabled. Please contact support.
+              Cash on Delivery is currently unavailable. Please contact support.
             </div>
           )}
 
           <div className="glass p-6 rounded-[2.5rem] border bg-card space-y-6">
-            {paymentMethod === 'stripe' ? (
-              <div className="space-y-4 animate-in fade-in duration-300">
-                <div className="text-xs text-muted-foreground bg-secondary/30 rounded-2xl p-4 text-center border border-dashed border-border">
-                  Use test card: <span className="font-mono font-bold text-foreground">4242 4242 4242 4242</span><br/>
-                  Any future expiry · Any CVC
+            <div className="space-y-4 animate-in fade-in duration-300">
+              <div className="bg-primary/5 border border-primary/20 p-6 rounded-3xl space-y-3 text-center">
+                <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-2">
+                  <ShieldCheck className="w-6 h-6 text-primary" />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex items-center gap-2 p-3 bg-background rounded-xl border text-[10px] font-bold">
-                    <ShieldCheck className="w-4 h-4 text-green-500" /> PCI COMPLIANT
-                  </div>
-                  <div className="flex items-center gap-2 p-3 bg-background rounded-xl border text-[10px] font-bold">
-                    <Lock className="w-4 h-4 text-green-500" /> 256-BIT SSL
-                  </div>
-                </div>
+                <h3 className="font-black text-lg tracking-tight">Cash on Delivery</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Place your order now and pay with cash when our delivery partner reaches your doorstep.
+                </p>
               </div>
-            ) : (
-              <div className="space-y-4 animate-in fade-in duration-300">
-                <div className="bg-primary/5 border border-primary/20 p-6 rounded-3xl space-y-3 text-center">
-                  <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-2">
-                    <ShieldCheck className="w-6 h-6 text-primary" />
-                  </div>
-                  <h3 className="font-black text-lg tracking-tight">Cash on Delivery</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    Place your order now and pay with cash when our delivery partner reaches your doorstep.
-                  </p>
-                </div>
-                <div className="bg-secondary/30 p-4 rounded-2xl text-[10px] font-bold text-center text-muted-foreground uppercase tracking-widest border border-border/50">
-                  Order will be verified via phone call
-                </div>
+              <div className="bg-secondary/30 p-4 rounded-2xl text-[10px] font-bold text-center text-muted-foreground uppercase tracking-widest border border-border/50">
+                Order will be verified via phone call
               </div>
-            )}
+            </div>
 
             {error && (
               <div className="bg-destructive/10 text-destructive p-4 rounded-2xl text-sm font-bold text-center border border-destructive/20 animate-shake">
@@ -261,7 +284,7 @@ export default function CheckoutPage() {
 
             <button
               onClick={handleCheckout}
-              disabled={loading || (!settings.cashOnDeliveryEnabled && !settings.stripeEnabled)}
+              disabled={loading || !settings.cashOnDeliveryEnabled}
               className={`w-full bg-primary text-primary-foreground py-5 rounded-[2rem] font-black text-lg hover:bg-primary/90 transition-all shadow-xl flex justify-center items-center gap-3 ${loading ? 'opacity-70 cursor-wait' : 'hover:scale-[1.02] active:scale-95'}`}
             >
               {loading ? (

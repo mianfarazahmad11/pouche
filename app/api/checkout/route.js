@@ -10,6 +10,17 @@ import { getSiteSettings } from '@/lib/siteSettings';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
+function normalizeShippingAddress(input, fallback = {}) {
+  return {
+    fullName: String(input?.fullName || fallback.fullName || '').trim(),
+    phone: String(input?.phone || fallback.phone || '').trim(),
+    addressLine: String(input?.addressLine || '').trim(),
+    city: String(input?.city || '').trim(),
+    postalCode: String(input?.postalCode || '').trim(),
+    country: String(input?.country || '').trim(),
+  };
+}
+
 export async function POST(req) {
   try {
     const session = await getSession();
@@ -17,7 +28,7 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { items, paymentMethod } = await req.json();
+    const { items, paymentMethod, shippingAddress } = await req.json();
     const settings = await getSiteSettings();
 
     if (!items || items.length === 0) {
@@ -56,6 +67,18 @@ export async function POST(req) {
     }
     if (!settings.cashOnDeliveryEnabled && !settings.stripeEnabled) {
       return NextResponse.json({ error: "No payment methods are enabled" }, { status: 400 });
+    }
+
+    const orderUser = await User.findById(session.userId).select('name email phoneNumber').lean();
+    const normalizedShippingAddress = normalizeShippingAddress(shippingAddress, {
+      fullName: orderUser?.name || session?.name || '',
+      phone: orderUser?.phoneNumber || '',
+    });
+
+    const requiredShippingFields = ['fullName', 'phone', 'addressLine', 'city', 'postalCode', 'country'];
+    const missingShippingField = requiredShippingFields.find((field) => !normalizedShippingAddress[field]);
+    if (missingShippingField) {
+      return NextResponse.json({ error: 'Please complete your delivery address before checkout' }, { status: 400 });
     }
 
     const lineItems = [];
@@ -130,8 +153,6 @@ export async function POST(req) {
       });
     }
 
-    const orderUser = await User.findById(session.userId).select('name email').lean();
-
     // Create pending order
     const order = await Order.create({
       userId: session.userId,
@@ -143,6 +164,7 @@ export async function POST(req) {
       paymentMethod: resolvedPaymentMethod,
       paymentStatus: 'unpaid',
       status: 'pending',
+      shippingAddress: normalizedShippingAddress,
       customerSnapshot: {
         name: orderUser?.name || session?.name || '',
         email: orderUser?.email || '',

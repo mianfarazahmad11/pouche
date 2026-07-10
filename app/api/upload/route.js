@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
-import { writeFile, mkdir } from 'fs/promises';
-import path from 'path';
+import { getCloudinary } from '@/lib/cloudinary';
 import { getSession } from '@/lib/auth';
+import path from 'path';
+
+export const runtime = 'nodejs';
 
 const MAX_UPLOAD_SIZE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = new Set([
@@ -25,7 +27,7 @@ export async function POST(req) {
     const formData = await req.formData();
     const file = formData.get('file');
 
-    if (!file) {
+    if (!file || typeof file !== 'object' || typeof file.arrayBuffer !== 'function' || typeof file.name !== 'string') {
       return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
     }
 
@@ -39,26 +41,39 @@ export async function POST(req) {
 
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
+    const cloudinary = getCloudinary();
+    const safeName = sanitizeFileName(file.name).replace(/\.[^.]+$/, '') || 'upload';
+    const publicId = `${Date.now()}-${safeName}`;
 
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
-    
-    // Ensure the directory exists
-    try {
-      await mkdir(uploadsDir, { recursive: true });
-    } catch (e) {
-      // Ignore if directory exists
+    const result = await new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: 'pouche/uploads',
+          public_id: publicId,
+          resource_type: 'image',
+          overwrite: false,
+        },
+        (error, uploadResult) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve(uploadResult);
+          }
+        }
+      );
+
+      uploadStream.end(buffer);
+    });
+
+    const url = result?.secure_url || result?.url;
+    if (!url) {
+      return NextResponse.json({ error: 'Cloudinary upload failed' }, { status: 500 });
     }
 
-    const filename = `${Date.now()}-${sanitizeFileName(file.name)}`;
-    const filePath = path.join(uploadsDir, filename);
-
-    await writeFile(filePath, buffer);
-
-    const url = `/uploads/${filename}`;
     return NextResponse.json({ url }, { status: 200 });
 
   } catch (error) {
     console.error('Upload error:', error);
-    return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
+    return NextResponse.json({ error: error?.message || 'Upload failed' }, { status: 500 });
   }
 }
