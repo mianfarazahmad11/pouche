@@ -1,36 +1,48 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# LuxeShop - Premium E-Commerce Platform
 
-## Getting Started
+A full-stack Next.js e-commerce application built with Next.js App Router, MongoDB, Tailwind CSS, and custom JWT authentication.
 
-First, run the development server:
+## Features
+- **User Authentication**: Secure JWT-based auth stored in HTTP-only cookies.
+- **Role-based Access**: Separate flows for `user` and `admin`.
+- **Storefront**: Premium design aesthetic, product grids, dynamic product detail pages.
+- **Cart & Checkout**: Global state management with Zustand, mock Stripe test integration.
+- **Orders & Invoices**: Track status, print styled HTML invoices for record-keeping.
+- **Admin Dashboard**: Full CRUD for products, manage order statuses, track revenue.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Requirements
+- Node.js 18+
+- MongoDB instance (local or Atlas)
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Setup Instructions
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+1. **Environment Variables**
+   Rename `.env.example` to `.env.local` or copy its contents and add a valid MongoDB connection string.
+   ```bash
+   cp .env.example .env.local
+   ```
+   Provide your MongoDB URI:
+   ```env
+   MONGODB_URI=mongodb+srv://<username>:<password>@cluster.mongodb.net/ecommerce
+   JWT_SECRET=your_super_secret_jwt_key
+   ```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+2. **Install Dependencies**
+   ```bash
+   npm install
+   ```
 
-## Learn More
+3. **Run Development Server**
+   ```bash
+   npm run dev
+   ```
 
-To learn more about Next.js, take a look at the following resources:
+## Demo Notes
+- Create your first user account through `/register`.
+- *Wait, how do I make an admin?* Since this is a demo, you can change your role directly in the MongoDB cluster collection `users` from `"user"` to `"admin"`, or change the register endpoint's default role assignment for testing.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Deployment to Vercel
+1. Push this repository to GitHub.
+2. Link the repository to your Vercel account.
+3. In Vercel Project Settings, add the environment variables defined in `.env.local`.
+4. Deploy!
