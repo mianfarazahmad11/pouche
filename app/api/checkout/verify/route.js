@@ -4,8 +4,6 @@ import dbConnect from '@/lib/mongodb';
 import Order from '@/models/Order';
 import { getSession } from '@/lib/auth';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
   const sessionId = searchParams.get('session_id');
@@ -20,6 +18,7 @@ export async function GET(req) {
   }
 
   try {
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
     await dbConnect();
 
     const stripeSession = await stripe.checkout.sessions.retrieve(sessionId);
