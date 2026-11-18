@@ -8,8 +8,6 @@ import Cart from '@/models/Cart';
 import User from '@/models/User';
 import { getSiteSettings } from '@/lib/siteSettings';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-
 function normalizeShippingAddress(input, fallback = {}) {
   return {
     fullName: String(input?.fullName || fallback.fullName || '').trim(),
@@ -152,6 +150,11 @@ export async function POST(req) {
         quantity: 1,
       });
     }
+
+    // Initialize payment credentials only for requests that use Stripe.
+    const stripe = resolvedPaymentMethod === 'stripe'
+      ? new Stripe(process.env.STRIPE_SECRET_KEY)
+      : null;
 
     // Create pending order
     const order = await Order.create({
